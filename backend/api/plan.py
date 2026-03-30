@@ -23,10 +23,18 @@ def _fetch_plan(query: str, source: str) -> Any:
 
 
 @router.post("/plan")
+@router.post("/sql/parse-plan")
 async def get_plan(req: PlanRequest) -> dict[str, Any]:
     try:
         raw_plan = _fetch_plan(req.query, req.source)
         parsed = parse_plan(raw_plan)
-        return {"success": True, "source": req.source, "raw_plan": raw_plan, "parsed_plan": parsed}
+        return {
+            "success": True,
+            "source": req.source,
+            "raw_plan": raw_plan,
+            "parsed_plan": parsed,
+            "plan_tree": parsed.get("plan_tree"),
+            "explanation": parsed.get("explanation"),
+        }
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc

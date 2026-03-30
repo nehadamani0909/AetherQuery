@@ -11,6 +11,7 @@ router = APIRouter()
 
 
 @router.post("/execute")
+@router.post("/sql/execute")
 async def execute(req: ExecuteRequest) -> dict[str, Any]:
     cache_key = hashlib.sha256(f"{req.source}|{req.mode}|{req.query}".encode("utf-8")).hexdigest()
     cached = query_cache.get(cache_key)

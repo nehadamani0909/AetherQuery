@@ -87,6 +87,34 @@ def explain_tree(node: dict[str, Any] | None) -> str:
     return f"Executes operator: {t}."
 
 
+def _from_postgres_node(node: dict[str, Any]) -> dict[str, Any]:
+    node_type = str(node.get("Node Type", "UNKNOWN")).upper().replace(" ", "_")
+    children = [_from_postgres_node(child) for child in node.get("Plans", [])]
+
+    columns: list[str] = []
+    output = node.get("Output")
+    if isinstance(output, list):
+        columns = [str(v) for v in output]
+
+    aggregates: list[str] = []
+    if "Group Key" in node and isinstance(node["Group Key"], list):
+        aggregates = ["GROUP BY " + ", ".join(str(v) for v in node["Group Key"])]
+
+    rows = node.get("Actual Rows", node.get("Plan Rows"))
+    try:
+        rows = int(rows) if rows is not None else None
+    except Exception:
+        rows = None
+
+    return {
+        "type": node_type,
+        "columns": columns,
+        "aggregates": aggregates,
+        "rows": rows,
+        "children": children,
+    }
+
+
 def parse_plan(raw_plan: Any) -> dict[str, Any]:
     if isinstance(raw_plan, list):
         if raw_plan and isinstance(raw_plan[0], tuple) and len(raw_plan[0]) > 1:
@@ -94,9 +122,19 @@ def parse_plan(raw_plan: Any) -> dict[str, Any]:
             cleaned = clean_explain_output("\n".join(lines))
             tree = _build_operator_tree(cleaned)
             return {"format": "duckdb_text", "plan_tree": tree, "explanation": explain_tree(tree)}
+
+        if raw_plan and isinstance(raw_plan[0], dict):
+            pg_root = raw_plan[0].get("Plan", raw_plan[0])
+            tree = _from_postgres_node(pg_root)
+            return {"format": "json", "plan": raw_plan, "plan_tree": tree, "explanation": explain_tree(tree)}
+
         return {"format": "json", "plan": raw_plan}
 
     if isinstance(raw_plan, dict):
+        pg_root = raw_plan.get("Plan", raw_plan)
+        if isinstance(pg_root, dict):
+            tree = _from_postgres_node(pg_root)
+            return {"format": "json", "plan": raw_plan, "plan_tree": tree, "explanation": explain_tree(tree)}
         return {"format": "json", "plan": raw_plan}
 
     if isinstance(raw_plan, str):

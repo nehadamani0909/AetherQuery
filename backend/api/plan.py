@@ -14,11 +14,20 @@ router = APIRouter()
 def _fetch_plan(query: str, source: str) -> Any:
     source_key = source.lower().strip()
     if source_key == "duckdb":
-        return duckdb_db.explain_query(query, analyze=True)
+        try:
+            return duckdb_db.explain_query(query, analyze=True)
+        except Exception:
+            return duckdb_db.explain_query(query, analyze=False)
     if source_key == "postgres":
-        return postgres_db.explain_query(query, analyze=True)
+        try:
+            return postgres_db.explain_query(query, analyze=True)
+        except Exception:
+            return postgres_db.explain_query(query, analyze=False)
     if source_key == "mysql":
-        return mysql_db.explain_query(query, analyze=True)
+        try:
+            return mysql_db.explain_query(query, analyze=True)
+        except Exception:
+            return mysql_db.explain_query(query, analyze=False)
     raise ValueError(f"Unsupported source: {source}")
 
 
@@ -37,4 +46,12 @@ async def get_plan(req: PlanRequest) -> dict[str, Any]:
             "explanation": parsed.get("explanation"),
         }
     except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        msg = str(exc)
+        source_key = req.source.lower().strip()
+        if source_key != "duckdb" and "table_" in req.query.lower():
+            msg = (
+                "The query looks like a CSV-loaded DuckDB table query (table_*). "
+                "Use source=duckdb for this plan/execute request. "
+                f"Original error: {msg}"
+            )
+        raise HTTPException(status_code=400, detail=msg) from exc
